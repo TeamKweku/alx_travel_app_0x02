@@ -31,7 +31,7 @@ def send_booking_confirmation_email(booking_id, user_email, listing_title):
 def send_payment_confirmation_email(payment_id: str, user_email: str):
     """Send payment confirmation email to user"""
     try:
-        payment = Payment.objects.get(payment_id=payment_id)
+        payment = Payment.objects.get(id=payment_id)
         booking = payment.booking
         
         subject = f'Payment Confirmation - {booking.property.name}'

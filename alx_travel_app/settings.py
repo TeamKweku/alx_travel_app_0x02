@@ -154,11 +154,21 @@ REST_FRAMEWORK = {
 
 # Swagger settings
 SWAGGER_SETTINGS = {
-    "SECURITY_DEFINITIONS": {"basic": {"type": "basic"}},
+    'SECURITY_DEFINITIONS': {
+        'Basic': {
+            'type': 'basic'
+        }
+    },
+    'USE_SESSION_AUTH': True,
+    'SECURITY_REQUIREMENTS': [
+        {'Basic': []}
+    ],
+    'LOGIN_URL': 'rest_framework:login',
+    'LOGOUT_URL': 'rest_framework:logout',
 }
 
 REDOC_SETTINGS = {
-    "LAZY_RENDERING": True,
+    'LAZY_RENDERING': False,
 }
 
 

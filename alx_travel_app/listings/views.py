@@ -3,6 +3,7 @@ from rest_framework import viewsets, permissions, status, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.urls import reverse
 from django.conf import settings
 from django_chapa import api as chapa_api
@@ -25,7 +26,7 @@ class ListingViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         operation_description="List all property listings",
-        responses={200: ListingSerializer(many=True)},
+        responses={200: ListingSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -33,7 +34,7 @@ class ListingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_description="Create a new property listing",
         request_body=ListingSerializer,
-        responses={201: ListingSerializer()},
+        responses={201: ListingSerializer()}
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -50,6 +51,9 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter bookings based on user role"""
+        if getattr(self, 'swagger_fake_view', False):  # for schema generation
+            return Booking.objects.none()
+        
         user = self.request.user
         if user.is_staff:
             return Booking.objects.all()
@@ -59,14 +63,14 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking = serializer.save(user=self.request.user)
         # Send booking confirmation email asynchronously
         send_booking_confirmation_email.delay(
-            booking_id=booking.id,
+            booking_id=str(booking.booking_id),
             user_email=booking.user.email,
-            listing_title=booking.listing.title
+            listing_title=booking.property.name
         )
 
     @swagger_auto_schema(
         operation_description="List all bookings for the authenticated user",
-        responses={200: BookingSerializer(many=True)},
+        responses={200: BookingSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -74,7 +78,7 @@ class BookingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_description="Create a new booking",
         request_body=BookingSerializer,
-        responses={201: BookingSerializer()},
+        responses={201: BookingSerializer()}
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -94,17 +98,53 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing payments.
+    """
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """Filter payments based on user role"""
+        if getattr(self, 'swagger_fake_view', False):  # for schema generation
+            return Payment.objects.none()
+            
         user = self.request.user
         if user.is_staff:
             return Payment.objects.all()
         return Payment.objects.filter(booking__user=user)
 
+    @swagger_auto_schema(
+        operation_description="""Initialize payment for a booking. 
+        This endpoint uses the payment ID from the URL (e.g., /api/payments/{id}/initialize/) 
+        and does not require any request body data.""",
+        request_body=None,
+        manual_parameters=[
+            openapi.Parameter(
+                'id',
+                openapi.IN_PATH,
+                description="Payment ID (UUID)",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Payment initialized successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'checkout_url': openapi.Schema(type=openapi.TYPE_STRING, description='URL to complete payment'),
+                        'transaction_ref': openapi.Schema(type=openapi.TYPE_STRING, description='Payment reference')
+                    }
+                )
+            ),
+            400: "Bad Request - Invalid payment ID",
+            404: "Not Found - Payment not found",
+            500: "Internal Server Error - Payment initialization failed"
+        }
+    )
     @action(detail=True, methods=['post'])
     def initialize(self, request, pk=None):
         """Initialize payment for a booking"""
@@ -112,31 +152,64 @@ class PaymentViewSet(viewsets.ModelViewSet):
         booking = payment.booking
         user = booking.user
 
+        # Update payment with user details
+        payment.email = user.email
+        payment.first_name = user.first_name or 'Guest'
+        payment.last_name = user.last_name or 'User'
+        # Truncate payment title to 16 characters
+        payment.payment_title = 'Booking Payment'  # Fixed length title
+        payment.description = f'Booking from {booking.start_date} to {booking.end_date}'
+        payment.save()
+
         callback_url = request.build_absolute_uri('/api/chapa-webhook/')
         return_url = request.build_absolute_uri(
-            reverse('payment-complete', args=[payment.payment_id])
+            reverse('payment-complete', args=[payment.id])
         )
 
         try:
-            # Initialize payment using django-chapa
-            response = chapa_api.initialize_payment(
-                amount=str(payment.amount),
-                email=user.email,
-                first_name=user.first_name or 'Guest',
-                last_name=user.last_name or 'User',
-                tx_ref=str(payment.payment_id),
-                callback_url=callback_url,
-                return_url=return_url,
-                currency=payment.currency
-            )
+            # Prepare headers with Chapa secret key
+            headers = {
+                'Authorization': f'Bearer {settings.CHAPA_SECRET}',
+                'Content-Type': 'application/json'
+            }
 
-            # Update payment with checkout URL
-            payment.checkout_url = response['data']['checkout_url']
+            # Prepare payload for Chapa API
+            payload = {
+                'amount': str(payment.amount),
+                'currency': payment.currency,
+                'email': payment.email,
+                'first_name': payment.first_name,
+                'last_name': payment.last_name,
+                'phone_number': payment.phone_number,
+                'tx_ref': str(payment.id),
+                'callback_url': callback_url,
+                'return_url': return_url,
+                'customization': {
+                    'title': 'Booking Payment',  # Fixed length title
+                    'description': payment.description
+                }
+            }
+
+            # Make direct request to Chapa API
+            import requests
+            response = requests.post(
+                f'{settings.CHAPA_API_URL}/v1/transaction/initialize',
+                json=payload,
+                headers=headers
+            )
+            response_data = response.json()
+
+            if response.status_code != 200:
+                raise Exception(f"Chapa API error: {response_data.get('message', str(response_data))}")
+
+            # Update payment with checkout URL and response
+            payment.checkout_url = response_data['data']['checkout_url']
+            payment.response_dump = response_data
             payment.save()
 
             return Response({
                 'checkout_url': payment.checkout_url,
-                'transaction_ref': payment.tx_ref
+                'transaction_ref': str(payment.id)
             })
 
         except Exception as e:
@@ -145,13 +218,47 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Create a new payment for a booking",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['booking', 'amount', 'currency', 'email', 'phone_number', 'first_name', 'last_name'],
+            properties={
+                'booking': openapi.Schema(type=openapi.TYPE_STRING, description='Booking UUID'),
+                'amount': openapi.Schema(type=openapi.TYPE_STRING, description='Amount to be paid (e.g., "1250.00")'),
+                'currency': openapi.Schema(type=openapi.TYPE_STRING, description='Currency code (e.g., "ETB")'),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Customer email address'),
+                'phone_number': openapi.Schema(type=openapi.TYPE_STRING, description='Customer phone number'),
+                'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='Customer first name'),
+                'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Customer last name'),
+                'payment_title': openapi.Schema(type=openapi.TYPE_STRING, description='Title of the payment'),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description='Payment description')
+            }
+        ),
+        responses={
+            201: PaymentSerializer(),
+            400: "Bad Request - Invalid input data",
+            404: "Not Found - Booking not found"
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
 
 class PaymentCompleteView(views.APIView):
     """Handle payment completion redirect"""
     permission_classes = [permissions.IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_description="Get payment details after completion",
+        responses={
+            200: PaymentSerializer(),
+            403: "Forbidden",
+            404: "Not Found"
+        }
+    )
     def get(self, request, payment_id):
-        payment = get_object_or_404(Payment, payment_id=payment_id)
+        payment = get_object_or_404(Payment, id=payment_id)
         
         # Verify the payment belongs to the user
         if not request.user.is_staff and payment.booking.user != request.user:

@@ -25,7 +25,7 @@ class ListingSerializer(serializers.ModelSerializer):
             "updated_at",
             "reviews",
         ]
-        read_only_fields = ["property_id", "created_at", "updated_at"]
+        read_only_fields = ["property_id", "host", "created_at", "updated_at"]
 
 
 class BookingSerializer(serializers.ModelSerializer):
@@ -41,7 +41,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
-        read_only_fields = ["booking_id", "created_at"]
+        read_only_fields = ["booking_id", "user", "created_at"]
 
     def validate(self, data):
         """Validate booking dates"""
@@ -54,11 +54,13 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = [
-            'payment_id', 'booking', 'amount', 'currency',
-            'chapa_transaction_ref', 'chapa_checkout_url',
-            'status', 'payment_method', 'created_at'
+            'id', 'booking', 'amount', 'currency',
+            'email', 'phone_number', 'first_name', 'last_name',
+            'payment_title', 'description', 'response_dump',
+            'checkout_url', 'status', 'payment_method',
+            'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'payment_id', 'chapa_transaction_ref',
-            'chapa_checkout_url', 'status', 'created_at'
+            'id', 'response_dump', 'checkout_url',
+            'status', 'created_at', 'updated_at'
         ]

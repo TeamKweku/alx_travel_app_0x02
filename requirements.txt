@@ -6,10 +6,10 @@ django-cors-headers==4.3.1
 mysqlclient==2.2.4
 django-environ==0.11.2
 amqp==5.2.0
-redis==5.0.3
+redis==4.5.5
 flower==2.0.1
 django-celery-beat==2.5.0
 django-celery-results==2.5.1
 python-dotenv==1.0.1
-django-chapa==1.0.0
+django-chapa==1.4.0
 gunicorn==21.2.0 
