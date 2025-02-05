@@ -116,35 +116,59 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Payment.objects.filter(booking__user=user)
 
     @swagger_auto_schema(
-        operation_description="""Initialize payment for a booking. 
-        This endpoint uses the payment ID from the URL (e.g., /api/payments/{id}/initialize/) 
-        and does not require any request body data.""",
-        request_body=None,
-        manual_parameters=[
-            openapi.Parameter(
-                'id',
-                openapi.IN_PATH,
-                description="Payment ID (UUID)",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
+        operation_description="Verify payment status with Chapa",
         responses={
             200: openapi.Response(
-                description="Payment initialized successfully",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'checkout_url': openapi.Schema(type=openapi.TYPE_STRING, description='URL to complete payment'),
-                        'transaction_ref': openapi.Schema(type=openapi.TYPE_STRING, description='Payment reference')
-                    }
-                )
-            ),
-            400: "Bad Request - Invalid payment ID",
-            404: "Not Found - Payment not found",
-            500: "Internal Server Error - Payment initialization failed"
+                description="Payment status verified",
+                schema=PaymentSerializer()
+            )
         }
     )
+    @action(detail=True, methods=['get'])
+    def verify(self, request, pk=None):
+        """Verify payment status with Chapa"""
+        payment = self.get_object()
+        
+        try:
+            # Prepare headers with Chapa secret key
+            headers = {
+                'Authorization': f'Bearer {settings.CHAPA_SECRET}',
+                'Content-Type': 'application/json'
+            }
+
+            # Make verification request to Chapa API
+            import requests
+            response = requests.get(
+                f'{settings.CHAPA_API_URL}/v1/transaction/verify/{payment.id}',
+                headers=headers
+            )
+            response_data = response.json()
+
+            if response.status_code == 200 and response_data.get('status') == 'success':
+                # Update payment status
+                payment.status = Payment.PaymentStatus.COMPLETED
+                payment.response_dump = response_data
+                payment.save()
+
+                # Send payment confirmation email
+                send_payment_confirmation_email.delay(
+                    payment_id=str(payment.id),
+                    user_email=payment.booking.user.email
+                )
+
+                # Update booking status
+                booking = payment.booking
+                booking.status = Booking.BookingStatus.CONFIRMED
+                booking.save()
+
+            return Response(PaymentSerializer(payment).data)
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['post'])
     def initialize(self, request, pk=None):
         """Initialize payment for a booking"""
@@ -156,8 +180,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment.email = user.email
         payment.first_name = user.first_name or 'Guest'
         payment.last_name = user.last_name or 'User'
-        # Truncate payment title to 16 characters
-        payment.payment_title = 'Booking Payment'  # Fixed length title
+        payment.payment_title = 'Booking Payment'
         payment.description = f'Booking from {booking.start_date} to {booking.end_date}'
         payment.save()
 
@@ -185,7 +208,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 'callback_url': callback_url,
                 'return_url': return_url,
                 'customization': {
-                    'title': 'Booking Payment',  # Fixed length title
+                    'title': 'Booking Payment',
                     'description': payment.description
                 }
             }
@@ -200,6 +223,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             response_data = response.json()
 
             if response.status_code != 200:
+                payment.status = Payment.PaymentStatus.FAILED
+                payment.save()
                 raise Exception(f"Chapa API error: {response_data.get('message', str(response_data))}")
 
             # Update payment with checkout URL and response
@@ -213,6 +238,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
+            # Update payment status on failure
+            payment.status = Payment.PaymentStatus.FAILED
+            payment.save()
+            
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

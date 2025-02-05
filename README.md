@@ -437,3 +437,173 @@ docker compose exec web python manage.py [command]
 4. If you modify models:
    - Create migrations: `docker compose exec web python manage.py makemigrations`
    - Apply migrations: `docker compose exec web python manage.py migrate`
+
+## Testing Chapa Payment Integration
+
+The application uses Chapa for payment processing. Here's how to test the payment flow:
+
+### 1. Create a Payment
+
+First, create a payment for a booking using the `/api/payments/` endpoint:
+
+```json
+{
+  "booking": "YOUR_BOOKING_ID",
+  "amount": "1250.00",
+  "currency": "ETB",
+  "email": "user@example.com",
+  "phone_number": "+251911234567",
+  "first_name": "Test",
+  "last_name": "User",
+  "payment_title": "Booking Payment",
+  "description": "Payment for 5 nights stay"
+}
+```
+
+![Get Payments](assets/get_payment.png)
+
+### 2. Initialize Payment
+
+After creating the payment, initialize it using:
+
+```
+POST /api/payments/{payment_id}/initialize/
+```
+
+The response will include a `checkout_url`:
+
+![Get Payment Response](assets/get_payent_response.png)
+
+### 3. Complete Test Payment
+
+1. Click on the `checkout_url` to access Chapa's test payment page. You'll see the Chapa checkout interface:
+
+![Chapa Checkout](assets/checkout.png)
+
+2. Use these test card details to complete the payment:
+
+   ```
+   Card Number: 4242424242424242
+   Expiry Date: Any future date (e.g., 12/25)
+   CVC: Any 3 digits (e.g., 123)
+   PIN: Any 4 digits (e.g., 1234)
+   ```
+
+3. Click "Pay using Test Mode" to process the payment.
+
+Note: In test mode, any future expiry date and any valid CVC (3 digits) and PIN (4 digits) will work with the test card number.
+
+### 4. Payment Success
+
+After successful payment, you'll be redirected to the success page:
+
+![Payment Success](assets/success.png)
+
+### 5. Verify Payment Status
+
+You can verify the payment status in two ways:
+
+1. Check the payment details:
+
+```
+GET /api/payments/{payment_id}/
+```
+
+2. Explicitly verify with Chapa:
+
+```
+GET /api/payments/{payment_id}/verify/
+```
+
+The verification response will show the updated payment status:
+
+![Payment Verification](assets/verify_payment.png)
+
+After successful verification, you can check the payment details to confirm the status has been updated to "completed":
+
+![Payment Completion](assets/completed.png)
+
+### 6. Testing Email Notifications
+
+When a payment is successfully verified:
+
+1. A confirmation email will be sent automatically
+2. To view the email:
+   - Open Mailpit interface at http://localhost:8025
+   - You should see an email with subject "Payment Confirmation"
+   - The email will contain:
+     - Booking details
+     - Payment amount
+     - Transaction reference
+     - Check-in and check-out dates
+
+### 7. Testing Complete Flow
+
+1. Create a new payment:
+
+```bash
+curl -X POST http://localhost:8000/api/payments/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking": "YOUR_BOOKING_ID",
+    "amount": "1250.00",
+    "currency": "ETB",
+    "email": "test@example.com",
+    "phone_number": "+251911234567",
+    "first_name": "Test",
+    "last_name": "User",
+    "payment_title": "Booking Payment",
+    "description": "Test payment"
+  }'
+```
+
+2. Initialize the payment:
+
+```bash
+curl -X POST http://localhost:8000/api/payments/{payment_id}/initialize/
+```
+
+3. Complete the payment using the test card:
+
+   - Open the checkout URL in your browser
+   - Use test card: 4242424242424242
+   - Any future expiry date
+   - Any 3-digit CVC
+   - Any 4-digit PIN
+
+4. Verify the payment:
+
+```bash
+curl -X GET http://localhost:8000/api/payments/{payment_id}/verify/
+```
+
+5. Check the results:
+   - Payment status should be "completed"
+   - Booking status should be "confirmed"
+   - Check Mailpit (http://localhost:8025) for confirmation email
+   - View payment details in Django admin (http://localhost:8000/admin/listings/payment/)
+
+### Troubleshooting Payment Testing
+
+1. **Payment Initialization Fails**:
+
+   - Check your Chapa API key in `.env`
+   - Ensure all required fields are provided
+   - Check the error message in the response
+
+2. **Email Not Received**:
+
+   - Ensure Celery worker is running: `docker compose logs celery`
+   - Check Mailpit is running: `docker compose ps`
+   - View Mailpit logs: `docker compose logs mailpit`
+
+3. **Payment Status Not Updating**:
+   - Check Chapa webhook logs
+   - Try manual verification using the verify endpoint
+   - Check Django logs: `docker compose logs web`
+
+Note: This is using Chapa's test mode. For production, you'll need to:
+
+1. Create a Chapa business account
+2. Get production API keys
+3. Update the `CHAPA_SECRET_KEY` in your environment variables
