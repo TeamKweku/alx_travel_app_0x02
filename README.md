@@ -470,28 +470,30 @@ After creating the payment, initialize it using:
 POST /api/payments/{payment_id}/initialize/
 ```
 
-The response will include a `checkout_url`:
+The response will include a `checkout_url` and the system will automatically send an email to the user with:
+
+- A link to complete the payment
+- Booking details
+- Payment amount
+- Expiry information
+
+You can check the email in Mailpit (http://localhost:8025):
 
 ![Get Payment Response](assets/get_payent_response.png)
 
 ### 3. Complete Test Payment
 
-1. Click on the `checkout_url` to access Chapa's test payment page. You'll see the Chapa checkout interface:
+You can complete the payment in two ways:
 
-![Chapa Checkout](assets/checkout.png)
+1. Click the payment link in your email
+2. Use the `checkout_url` from the API response
 
-2. Use these test card details to complete the payment:
+Both will take you to the Chapa checkout interface:
 
-   ```
-   Card Number: 4242424242424242
-   Expiry Date: Any future date (e.g., 12/25)
-   CVC: Any 3 digits (e.g., 123)
-   PIN: Any 4 digits (e.g., 1234)
-   ```
+1. Click the payment link in your email
+2. Use the `checkout_url` from the API response
 
-3. Click "Pay using Test Mode" to process the payment.
-
-Note: In test mode, any future expiry date and any valid CVC (3 digits) and PIN (4 digits) will work with the test card number.
+Both will take you to the Chapa checkout interface:
 
 ### 4. Payment Success
 
@@ -525,17 +527,26 @@ After successful verification, you can check the payment details to confirm the 
 
 ### 6. Testing Email Notifications
 
-When a payment is successfully verified:
+The system sends several types of email notifications throughout the booking and payment process:
 
-1. A confirmation email will be sent automatically
-2. To view the email:
-   - Open Mailpit interface at http://localhost:8025
-   - You should see an email with subject "Payment Confirmation"
-   - The email will contain:
-     - Booking details
-     - Payment amount
-     - Transaction reference
-     - Check-in and check-out dates
+1. **Booking Confirmation Email**
+   - Sent automatically when a booking is created
+   - Contains booking details and reference number
+
+![Booking Email](assets/booking_email.png)
+
+2. **Payment Checkout Email**
+   - Sent when a payment is initialized
+   - Contains the payment link and booking details
+   - Includes amount to be paid and expiry information
+
+![Checkout Email](assets/checkout_email.png)
+
+3. **Payment Confirmation Email**
+   - Sent after successful payment verification
+   - Contains transaction details and booking confirmation
+
+You can view all emails in the Mailpit interface at http://localhost:8025
 
 ### 7. Testing Complete Flow
 

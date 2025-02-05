@@ -66,4 +66,47 @@ def send_payment_confirmation_email(payment_id: str, user_email: str):
     except Payment.DoesNotExist:
         return f"Payment {payment_id} not found"
     except Exception as e:
-        return f"Error sending payment confirmation email: {str(e)}" 
+        return f"Error sending payment confirmation email: {str(e)}"
+
+@shared_task
+def send_payment_checkout_email(payment_id: str, user_email: str, checkout_url: str):
+    """Send payment checkout link to user"""
+    try:
+        payment = Payment.objects.get(id=payment_id)
+        booking = payment.booking
+        
+        subject = f'Complete Your Payment - {booking.property.name}'
+        message = f"""
+        Dear {booking.user.get_full_name() or 'Guest'},
+
+        Please complete your payment for booking {booking.booking_id}.
+
+        Booking Details:
+        - Property: {booking.property.name}
+        - Check-in: {booking.start_date}
+        - Check-out: {booking.end_date}
+        - Total Amount: {payment.currency} {payment.amount}
+
+        Click the link below to complete your payment:
+        {checkout_url}
+
+        This payment link will expire in 24 hours.
+
+        Best regards,
+        ALX Travel Team
+        """
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user_email],
+            fail_silently=False,
+        )
+        
+        return f"Payment checkout email sent to {user_email}"
+        
+    except Payment.DoesNotExist:
+        return f"Payment {payment_id} not found"
+    except Exception as e:
+        return f"Error sending payment checkout email: {str(e)}" 

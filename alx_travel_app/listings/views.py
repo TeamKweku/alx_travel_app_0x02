@@ -9,7 +9,7 @@ from django.conf import settings
 from django_chapa import api as chapa_api
 from .models import Listing, Booking, Review, Payment
 from .serializers import ListingSerializer, BookingSerializer, ReviewSerializer, PaymentSerializer
-from .tasks import send_booking_confirmation_email, send_payment_confirmation_email
+from .tasks import send_booking_confirmation_email, send_payment_confirmation_email, send_payment_checkout_email
 
 
 class ListingViewSet(viewsets.ModelViewSet):
@@ -232,9 +232,17 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment.response_dump = response_data
             payment.save()
 
+            # Send checkout URL to user's email
+            send_payment_checkout_email.delay(
+                payment_id=str(payment.id),
+                user_email=payment.email,
+                checkout_url=payment.checkout_url
+            )
+
             return Response({
                 'checkout_url': payment.checkout_url,
-                'transaction_ref': str(payment.id)
+                'transaction_ref': str(payment.id),
+                'message': 'Payment checkout link has been sent to your email'
             })
 
         except Exception as e:
