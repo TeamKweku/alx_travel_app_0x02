@@ -11,4 +11,5 @@ flower==2.0.1
 django-celery-beat==2.5.0
 django-celery-results==2.5.1
 python-dotenv==1.0.1
+django-chapa==1.0.0
 gunicorn==21.2.0 

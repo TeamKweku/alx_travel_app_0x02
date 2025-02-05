@@ -15,7 +15,7 @@ SECRET_KEY = env("DJANGO_SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 
 
 # Application definition
@@ -40,7 +40,9 @@ LOCAL_APPS = [
     "alx_travel_app.listings.apps.ListingsConfig",
 ]
 
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS + [
+    'django_chapa',
+]
 
 
 MIDDLEWARE = [
@@ -171,6 +173,7 @@ CELERY_ACCEPT_CONTENT = ["application/json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Celery Beat Settings
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
@@ -181,3 +184,10 @@ EMAIL_HOST = env('EMAIL_HOST', default='mailpit')
 EMAIL_PORT = env('EMAIL_PORT', default=1025)
 EMAIL_USE_TLS = env('EMAIL_USE_TLS', default=False)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='test@alxtravelapp.com')
+
+# Chapa Payment Configuration
+CHAPA_SECRET = env('CHAPA_SECRET_KEY')
+CHAPA_API_URL = 'https://api.chapa.co'
+CHAPA_API_VERSION = 'v1'
+CHAPA_TRANSACTION_MODEL = 'listings.Payment'
+CHAPA_WEBHOOK_URL = '/api/chapa-webhook/'

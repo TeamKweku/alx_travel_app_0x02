@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth import get_user_model
+from django_chapa.models import ChapaTransactionMixin
 
 User = get_user_model()
 
@@ -58,3 +59,29 @@ class Review(models.Model):
 
     class Meta:
         unique_together = ('property', 'user')
+
+class Payment(ChapaTransactionMixin):
+    """Model representing a payment transaction"""
+    class PaymentStatus(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='payment')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default='ETB')
+    status = models.CharField(
+        max_length=10,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.PENDING
+    )
+    payment_method = models.CharField(max_length=50, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Payment {self.id} - {self.booking.property.name}"
+
+    class Meta:
+        swappable = 'CHAPA_TRANSACTION_MODEL'

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Listing, Booking, Review
+from .models import Listing, Booking, Review, Payment
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -48,3 +48,17 @@ class BookingSerializer(serializers.ModelSerializer):
         if data["start_date"] >= data["end_date"]:
             raise serializers.ValidationError("End date must be after start date")
         return data
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            'payment_id', 'booking', 'amount', 'currency',
+            'chapa_transaction_ref', 'chapa_checkout_url',
+            'status', 'payment_method', 'created_at'
+        ]
+        read_only_fields = [
+            'payment_id', 'chapa_transaction_ref',
+            'chapa_checkout_url', 'status', 'created_at'
+        ]
